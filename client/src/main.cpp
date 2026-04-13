@@ -11,33 +11,36 @@
 #include <iostream>
 
 namespace asio = boost::asio;
+namespace beast = boost::beast;
+namespace http = boost::beast::http;
+
+using asio::use_awaitable;
 
 asio::awaitable<void> session(std::string host, std::string port) {
+    beast::flat_buffer buf;
+
     try {
         asio::ip::tcp::resolver resolver(co_await asio::this_coro::executor);
         auto endpoints =
-            co_await resolver.async_resolve(host, port, asio::use_awaitable);
+            co_await resolver.async_resolve(host, port, use_awaitable);
 
         asio::ip::tcp::socket socket(co_await asio::this_coro::executor);
-        co_await socket.async_connect(*endpoints.begin(), asio::use_awaitable);
+        co_await socket.async_connect(*endpoints.begin(), use_awaitable);
 
-        while (true) {
-            std::string request;
-            std::getline(std::cin, request);
-            if (request.length() == 0) {
-                break;
-            }
+        beast::tcp_stream stream(std::move(socket));
 
-            co_await socket.async_write_some(
-                asio::buffer(request), asio::use_awaitable);
+        http::request<http::string_body> request{http::verb::get, "/", 11};
+        request.set(http::field::host, host);
+        request.set(http::field::connection, "close");
 
-            char response[1024];
-            size_t len = co_await socket.async_read_some(
-                asio::buffer(response), asio::use_awaitable);
+        co_await http::async_write(stream, request, use_awaitable);
 
-            std::printf("%s\n", response);
-        }
-        socket.close();
+        http::response<http::dynamic_body> response;
+        co_await http::async_read(stream, buf, response, use_awaitable);
+
+        std::cout << response << std::endl;
+
+        stream.socket().shutdown(asio::ip::tcp::socket::shutdown_send);
     } catch (std::exception &e) {
         std::printf("client exception: %s\n", e.what());
     }

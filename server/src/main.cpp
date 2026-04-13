@@ -7,22 +7,47 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/spawn.hpp>
 #include <boost/beast/core.hpp>
+#include <boost/beast/http/field.hpp>
+#include <boost/beast/http/message.hpp>
+#include <boost/beast/http/read.hpp>
+#include <boost/beast/http/string_body.hpp>
+#include <boost/beast/http/write.hpp>
 #include <boost/config.hpp>
 #include <print>
 
 namespace asio = boost::asio;
+namespace beast = boost::beast;
+namespace http = boost::beast::http;
 
-asio::awaitable<void> handler(asio::ip::tcp::socket socket) {
+using asio::use_awaitable;
+
+asio::awaitable<void> handler(beast::tcp_stream stream) {
+    beast::flat_buffer buf;
+
     try {
-        char data[1024];
         while (true) {
-            std::size_t len = co_await socket.async_read_some(
-                asio::buffer(data), asio::use_awaitable);
+            http::request<http::string_body> request;
+            co_await http::async_read(stream, buf, request, use_awaitable);
 
-            std::printf("%s\n", data);
+            std::printf(
+                "method: %s, target: %s, http version: %d\n",
+                request.base().method_string().data(),
+                request.base().target().data(),
+                request.base().version());
 
-            co_await async_write(
-                socket, asio::buffer(data, len), asio::use_awaitable);
+            http::response<http::string_body> response{
+                http::status::ok, request.version()};
+            response.set(http::field::server, "test-server/1.0");
+            response.set(http::field::content_type, "text/html");
+            response.keep_alive(request.keep_alive());
+            response.body() = "Hello!!";
+            response.prepare_payload();
+
+            co_await http::async_write(stream, response, use_awaitable);
+
+            if (!request.keep_alive()) {
+                break;
+            }
         }
     } catch (std::exception &e) {
         std::printf("server exception: %s\n", e.what());
@@ -34,8 +59,11 @@ asio::awaitable<void> listener(asio::ip::address address, unsigned short port) {
     asio::ip::tcp::acceptor acceptor(executor, {address, port});
     while (true) {
         asio::ip::tcp::socket socket =
-            co_await acceptor.async_accept(asio::use_awaitable);
-        asio::co_spawn(executor, handler(std::move(socket)), asio::detached);
+            co_await acceptor.async_accept(use_awaitable);
+        asio::co_spawn(
+            executor,
+            handler(beast::tcp_stream(std::move(socket))),
+            asio::detached);
     }
 }
 
