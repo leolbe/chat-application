@@ -1,6 +1,6 @@
-add_executable(chat_server src/main.cpp)
+add_executable(chatapp_server src/main.cpp)
 
-target_link_libraries(chat_server PRIVATE
-        lib
+target_link_libraries(chatapp_server PRIVATE
+        common
         Boost::headers
 )
