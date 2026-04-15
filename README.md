@@ -5,7 +5,7 @@ graphical chat application. This is the current plan:
 
 1. Client-Server communication through CLI:
     - HTTP REST: Login, history fetching
-    - SSE: Instant messaging
+    - WebSockets: Instant messaging
 2. User accounts, persistent storage
     - SQLite
 3. Client to client communication, conversations
