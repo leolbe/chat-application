@@ -1,5 +1,6 @@
 [requires]
 boost/1.86.0
+libuuid/1.0.3
 
 [generators]
 CMakeDeps

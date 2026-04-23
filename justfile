@@ -24,10 +24,10 @@ build TYPE='Debug':
     cmake --build build/{{TYPE}}
 
 run-client TYPE='Debug' *ARGS='': (build TYPE)
-    ./build/{{TYPE}}/client/chat_client {{ARGS}}
+    ./build/{{TYPE}}/client/chatapp_client {{ARGS}}
 
 run-server TYPE='Debug' *ARGS='': (build TYPE)
-    ./build/{{TYPE}}/server/chat_server {{ARGS}}
+    ./build/{{TYPE}}/server/chatapp_server {{ARGS}}
 
 clean:
     rm -rf build/
