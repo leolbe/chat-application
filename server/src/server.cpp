@@ -27,12 +27,14 @@ namespace auth = chatapp::auth;
 namespace protocol = chatapp::protocol;
 using chatapp::server::Server;
 
-void on_error(beast::error_code ec, char const *message) {
+void fail(beast::error_code ec, char const *message) {
     std::cerr << message << ": " << ec.message() << "\n";
 }
 
 asio::awaitable<void> send_response(
     beast::tcp_stream &stream, http::status status, std::string body) {
+    beast::error_code ec;
+
     http::response<http::string_body> res(status, 11);
 
     res.set(http::field::server, protocol::SERVER_NAME);
@@ -43,7 +45,11 @@ asio::awaitable<void> send_response(
         res.body() = body;
     }
 
-    co_await http::async_write(stream, res, asio::use_awaitable);
+    co_await http::async_write(
+        stream, res, asio::redirect_error(asio::use_awaitable, ec));
+    if (ec) {
+        fail(ec, "error when sending HTTP response");
+    }
 }
 
 Server::Server(asio::io_context &ioc)
@@ -78,15 +84,14 @@ asio::awaitable<void> Server::handle(beast::tcp_stream stream) {
 
     co_await http::async_read(
         stream, buf, parser, asio::redirect_error(asio::use_awaitable, ec));
-
     if (ec == http::error::end_of_stream) {
-        ec = stream.socket().shutdown(asio::socket_base::shutdown_send, ec);
+        stream.socket().shutdown(asio::socket_base::shutdown_send, ec);
         if (ec) {
-            on_error(ec, "error when shutting down socket");
+            fail(ec, "error when shutting down socket");
         }
         co_return;
     } else if (ec) {
-        on_error(ec, "error when handling http request");
+        fail(ec, "error when handling HTTP request");
         co_await send_response(
             stream, http::status::bad_request, "Bad request");
         co_return;
@@ -129,7 +134,6 @@ asio::awaitable<void> Server::handle(beast::tcp_stream stream) {
             co_await send_response(
                 stream, http::status::conflict, "Username is already taken");
         }
-
         co_return;
     }
 
