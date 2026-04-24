@@ -31,11 +31,23 @@ HTTP/1.1 422 Unprocessable Content
 ## Fetch message history
 
 ```http
+HEAD /messages HTTP/1.1
+Authorization: Basic {base64("$username:$password")}
+```
+
+```http
 GET /messages HTTP/1.1
 Authorization: Basic {base64("$username:$password")}
 ```
 
 ### Responses
+
+Message history head
+```http
+HTTP/1.1 200 OK
+Content-Type: text/plain
+Content-Length: {$messages.count}
+```
 
 Message history fetched
 ```http

@@ -4,12 +4,13 @@
 
 #include "client.hpp"
 
+#include "auth.hpp"
+
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
 #include <boost/beast/core/flat_buffer.hpp>
 #include <boost/beast/core/tcp_stream.hpp>
 #include <boost/beast/http/dynamic_body.hpp>
-#include <boost/beast/http/error.hpp>
 #include <boost/beast/http/read.hpp>
 #include <boost/beast/http/string_body.hpp>
 #include <boost/beast/http/write.hpp>
@@ -41,9 +42,13 @@ asio::awaitable<void> Client::session(std::string host, std::string port) {
 
         beast::tcp_stream stream(std::move(socket));
 
-        http::request<http::string_body> request{http::verb::get, "/", 11};
+        http::request<http::string_body> request{http::verb::get, "/signup", 11};
         request.set(http::field::host, host);
-        request.set(http::field::connection, "close");
+
+        auto auth = auth::Auth::make("username", "password");
+        request.set(http::field::authorization, auth->encode());
+
+        // request.set(http::field::connection, "close");
 
         co_await http::async_write(stream, request, asio::use_awaitable);
 

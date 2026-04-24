@@ -9,6 +9,7 @@
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/beast/core/tcp_stream.hpp>
+#include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <memory>
 #include <unordered_map>
@@ -16,14 +17,20 @@
 
 namespace chatapp::server {
 
+constexpr std::uint64_t REQUEST_BODY_LIMIT = 10000;
+constexpr std::chrono::duration<std::int64_t> CONNECTION_TIMEOUT =
+    std::chrono::seconds(30);
+
 class Server : std::enable_shared_from_this<Server> {
 public:
-    Server(boost::asio::io_context &ioc);
+    explicit Server(boost::asio::io_context &ioc);
 
     void run_detached(
         boost::asio::ip::basic_endpoint<boost::asio::ip::tcp> &&endpoint);
 
 private:
+    boost::uuids::random_generator uuid_generator;
+
     std::vector<Message> messages;
     std::unordered_map<UserId, User> users;
     std::unordered_map<std::string, UserId> users_lookup;
@@ -37,14 +44,14 @@ private:
 
     boost::asio::awaitable<void> handle(boost::beast::tcp_stream stream);
 
+    boost::asio::awaitable<bool> create_user(std::string username, std::string password);
+
     boost::asio::awaitable<bool>
     authenticate(std::string const &username, std::string const &password);
 
-    boost::asio::awaitable<void>
-    join(websocket::WebSocketSession *session);
+    boost::asio::awaitable<void> join(websocket::WebSocketSession *session);
 
-    boost::asio::awaitable<void>
-    leave(websocket::WebSocketSession *session);
+    boost::asio::awaitable<void> leave(websocket::WebSocketSession *session);
 
     boost::asio::awaitable<void>
     send_message(UserId sender, std::string message);

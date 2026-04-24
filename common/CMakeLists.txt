@@ -1,6 +1,7 @@
 add_library(common STATIC
-        src/utils.cpp
-        src/utils.hpp
+        src/auth.cpp
+        src/auth.hpp
+        src/protocol.hpp
 )
 
 target_include_directories(common PUBLIC

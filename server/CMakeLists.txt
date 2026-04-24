@@ -3,7 +3,6 @@ add_executable(chatapp_server src/main.cpp
         src/server.hpp
         src/websocket.cpp
         src/websocket.hpp
-        src/user.cpp
         src/user.hpp
 )
 

@@ -17,7 +17,7 @@ enum class ClientState {
 
 class Client {
 public:
-    Client(boost::asio::io_context &ioc);
+    explicit Client(boost::asio::io_context &ioc);
 
     void run_detached(std::string host, std::string port);
 
