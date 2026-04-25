@@ -3,17 +3,16 @@
 //
 
 #pragma once
+#include "auth.hpp"
+
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/beast/core/flat_buffer.hpp>
+#include <boost/beast/core/tcp_stream.hpp>
 #include <optional>
 #include <string>
 
 namespace chatapp::client {
-
-enum class ClientState {
-    PreLogin,
-    Login
-};
 
 class Client {
 public:
@@ -24,11 +23,20 @@ public:
 private:
     boost::asio::io_context &ioc;
 
-    ClientState state;
-
-    std::optional<std::string> login_base64;
+    std::optional<auth::Auth> auth;
 
     boost::asio::awaitable<void> session(std::string host, std::string port);
+
+    boost::asio::awaitable<bool> login_prompt(
+        boost::beast::flat_buffer &buf, boost::beast::tcp_stream &stream, std::string &host);
+
+    boost::asio::awaitable<bool> signup_prompt(
+        boost::beast::flat_buffer &buf, boost::beast::tcp_stream &stream, std::string &host);
+
+    boost::asio::awaitable<void> login(
+        boost::beast::flat_buffer &buf,
+        boost::beast::tcp_stream &stream,
+        std::string &host);
 };
 
 } // namespace chatapp::client

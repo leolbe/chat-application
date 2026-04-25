@@ -9,6 +9,7 @@
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
 #include <boost/asio/redirect_error.hpp>
+#include <boost/beast/core/buffers_to_string.hpp>
 #include <boost/beast/core/flat_buffer.hpp>
 #include <boost/beast/core/tcp_stream.hpp>
 #include <boost/beast/http/dynamic_body.hpp>
@@ -21,13 +22,15 @@
 namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace http = boost::beast::http;
+
+namespace auth = chatapp::auth;
 using chatapp::client::Client;
 
 void fail(beast::error_code ec, char const *message) {
     std::cerr << message << ": " << ec.message() << "\n";
 }
 
-Client::Client(asio::io_context &ioc) : ioc(ioc), state{ClientState::PreLogin} {
+Client::Client(asio::io_context &ioc) : ioc(ioc) {
 }
 
 void Client::run_detached(std::string host, std::string port) {
@@ -61,31 +64,109 @@ asio::awaitable<void> Client::session(std::string host, std::string port) {
 
     beast::tcp_stream stream(std::move(socket));
 
-    http::request<http::string_body> request{http::verb::get, "/signup", 11};
-    request.set(http::field::host, host);
-
-    auto auth = auth::Auth::make("username", "password");
-    request.set(http::field::authorization, auth->encode());
-
-    request.set(http::field::connection, "close");
-
-    co_await http::async_write(
-        stream, request, asio::redirect_error(asio::use_awaitable, ec));
-    if (ec) {
-        fail(ec, "error when sending HTTP request");
-        co_return;
+    co_await login(buf, stream, host);
+    if (auth.has_value()) {
+        // retrieve messages, etc.
     }
-
-    http::response<http::dynamic_body> response;
-    co_await http::async_read(
-        stream, buf, response, asio::redirect_error(asio::use_awaitable, ec));
-    if (ec) {
-        fail(ec, "error when reading HTTP response");
-        co_return;
-    }
-
-    std::cout << response << "\n";
 
     stream.socket().shutdown(asio::ip::tcp::socket::shutdown_send);
+
+    ioc.stop();
+}
+
+asio::awaitable<bool> Client::login_prompt(
+    beast::flat_buffer &buf, beast::tcp_stream &stream, std::string &host) {
+    beast::error_code ec;
+
+    std::string username;
+    std::string password;
+    std::print("Username: ");
+    std::getline(std::cin, username);
+    std::print("Password: ");
+    std::getline(std::cin, password);
+
+    auto auth = auth::Auth::make(username, password);
+    if (!auth.has_value()) {
+        std::println("Invalid username or password!");
+        co_return true;
+    }
+    this->auth = auth;
+    co_return true;
+}
+
+asio::awaitable<bool> Client::signup_prompt(
+    beast::flat_buffer &buf, beast::tcp_stream &stream, std::string &host) {
+    beast::error_code ec;
+
+    std::string username;
+    std::string password;
+    std::print("Username: ");
+    std::getline(std::cin, username);
+    std::print("Password: ");
+    std::getline(std::cin, password);
+
+    auto auth = auth::Auth::make(username, password);
+    if (!auth.has_value()) {
+        std::println("Invalid username or password!");
+        co_return true;
+    }
+
+    http::request<http::string_body> req{http::verb::get, "/signup", 11};
+    req.set(http::field::host, host);
+    req.set(http::field::authorization, auth->encode());
+    req.set(http::field::connection, "close");
+
+    co_await http::async_write(
+        stream, req, asio::redirect_error(asio::use_awaitable, ec));
+    if (ec) {
+        fail(ec, "error when sending HTTP request");
+        co_return false;
+    }
+
+    http::response<http::dynamic_body> res;
+    co_await http::async_read(
+        stream, buf, res, asio::redirect_error(asio::use_awaitable, ec));
+    if (ec) {
+        fail(ec, "error when reading HTTP response");
+        co_return false;
+    }
+
+    switch (res.base().result()) {
+    case http::status::created:
+        std::println("Successfully signed up!");
+        this->auth = auth;
+        break;
+    case http::status::conflict:
+        std::println("Username is already taken!");
+        break;
+    default:
+        std::string body = boost::beast::buffers_to_string(res.body().data());
+        std::cout << body << "\n";
+        co_return false;
+    }
+    co_return true;
+}
+
+asio::awaitable<void> Client::login(
+    beast::flat_buffer &buf, beast::tcp_stream &stream, std::string &host) {
+    std::println("Welcome to chatapp!");
+    while (!auth.has_value() && std::cin) {
+        std::println("l: login, s: signup, q: quit");
+
+        std::string inp;
+        std::getline(std::cin, inp);
+
+        if (inp == "l") {
+            if (!co_await login_prompt(buf, stream, host)) {
+                break;
+            }
+        } else if (inp == "s") {
+            if (!co_await signup_prompt(buf, stream, host)) {
+                break;
+            }
+        } else if (inp == "q") {
+            break;
+        }
+    }
 }
 
