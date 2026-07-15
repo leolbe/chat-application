@@ -79,11 +79,11 @@ std::string Auth::encode() const {
     return encoded;
 }
 
-std::string const &Auth::get_username() {
+std::string const &Auth::get_username() const {
     return username;
 }
 
-std::string const &Auth::get_password() {
+std::string const &Auth::get_password() const {
     return password;
 }
 

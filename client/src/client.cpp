@@ -64,14 +64,55 @@ asio::awaitable<void> Client::session(std::string host, std::string port) {
 
     beast::tcp_stream stream(std::move(socket));
 
-    co_await login(buf, stream, host);
-    if (auth.has_value()) {
-        // retrieve messages, etc.
+    bool logged_in = co_await login(buf, stream, host);
+    if (logged_in) {
+        // todo: switch to websocket, start instant messaging
     }
 
     stream.socket().shutdown(asio::ip::tcp::socket::shutdown_send);
 
     ioc.stop();
+}
+
+asio::awaitable<bool> Client::fetch_messages(
+    beast::flat_buffer &buf,
+    beast::tcp_stream &stream,
+    std::string const &host,
+    auth::Auth const &auth) {
+    beast::error_code ec;
+
+    http::request<http::string_body> req{http::verb::get, "/messages", 11};
+    req.set(http::field::host, host);
+    req.set(http::field::authorization, auth.encode());
+    req.set(http::field::connection, "close");
+
+    co_await http::async_write(
+        stream, req, asio::redirect_error(asio::use_awaitable, ec));
+    if (ec) {
+        fail(ec, "error when sending HTTP request");
+        co_return false;
+    }
+
+    http::response<http::string_body> res;
+    co_await http::async_read(
+        stream, buf, res, asio::redirect_error(asio::use_awaitable, ec));
+    if (ec) {
+        fail(ec, "error when reading HTTP response");
+        co_return false;
+    }
+
+    switch (res.base().result()) {
+    case http::status::ok:
+        std::println("Messages:\n{}", res.body());
+        break;
+    case http::status::unauthorized:
+        std::println("Failed to authorize");
+        break;
+    default:
+        std::cout << res.body() << "\n";
+        co_return false;
+    }
+    co_return true;
 }
 
 asio::awaitable<bool> Client::login_prompt(
@@ -111,10 +152,9 @@ asio::awaitable<bool> Client::signup_prompt(
         co_return true;
     }
 
-    http::request<http::string_body> req{http::verb::get, "/signup", 11};
+    http::request<http::string_body> req{http::verb::post, "/signup", 11};
     req.set(http::field::host, host);
     req.set(http::field::authorization, auth->encode());
-    req.set(http::field::connection, "close");
 
     co_await http::async_write(
         stream, req, asio::redirect_error(asio::use_awaitable, ec));
@@ -147,10 +187,10 @@ asio::awaitable<bool> Client::signup_prompt(
     co_return true;
 }
 
-asio::awaitable<void> Client::login(
+asio::awaitable<bool> Client::login(
     beast::flat_buffer &buf, beast::tcp_stream &stream, std::string &host) {
     std::println("Welcome to chatapp!");
-    while (!auth.has_value() && std::cin) {
+    while (std::cin) {
         std::println("l: login, s: signup, q: quit");
 
         std::string inp;
@@ -167,6 +207,12 @@ asio::awaitable<void> Client::login(
         } else if (inp == "q") {
             break;
         }
+
+        if (this->auth.has_value()) {
+            co_return co_await fetch_messages(
+                buf, stream, host, this->auth.value());
+        }
     }
+    co_return false;
 }
 

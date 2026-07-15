@@ -27,13 +27,23 @@ private:
 
     boost::asio::awaitable<void> session(std::string host, std::string port);
 
+    boost::asio::awaitable<bool> fetch_messages(
+        boost::beast::flat_buffer &buf,
+        boost::beast::tcp_stream &stream,
+        std::string const &host,
+        auth::Auth const &auth);
+
     boost::asio::awaitable<bool> login_prompt(
-        boost::beast::flat_buffer &buf, boost::beast::tcp_stream &stream, std::string &host);
+        boost::beast::flat_buffer &buf,
+        boost::beast::tcp_stream &stream,
+        std::string &host);
 
     boost::asio::awaitable<bool> signup_prompt(
-        boost::beast::flat_buffer &buf, boost::beast::tcp_stream &stream, std::string &host);
+        boost::beast::flat_buffer &buf,
+        boost::beast::tcp_stream &stream,
+        std::string &host);
 
-    boost::asio::awaitable<void> login(
+    boost::asio::awaitable<bool> login(
         boost::beast::flat_buffer &buf,
         boost::beast::tcp_stream &stream,
         std::string &host);

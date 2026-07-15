@@ -20,8 +20,8 @@ public:
     static std::optional<Auth> decode(std::string_view const &encoded);
     [[nodiscard]] std::string encode() const;
 
-    std::string const &get_username();
-    std::string const &get_password();
+    std::string const &get_username() const;
+    std::string const &get_password() const;
 
 private:
     Auth(std::string username, std::string password);

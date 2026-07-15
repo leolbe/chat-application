@@ -3,6 +3,7 @@
 //
 
 #pragma once
+#include "auth.hpp"
 #include "user.hpp"
 #include "websocket.hpp"
 
@@ -44,10 +45,20 @@ private:
 
     boost::asio::awaitable<void> handle(boost::beast::tcp_stream stream);
 
-    boost::asio::awaitable<bool> create_user(std::string username, std::string password);
+    boost::asio::awaitable<std::optional<UserId>> authenticate(
+        boost::beast::tcp_stream &stream,
+        boost::beast::http::request<boost::beast::http::string_body> &req);
 
-    boost::asio::awaitable<bool>
-    authenticate(std::string const &username, std::string const &password);
+    boost::asio::awaitable<void> handle_signup(
+        boost::beast::tcp_stream &stream,
+        boost::beast::http::request<boost::beast::http::string_body> &req);
+
+    boost::asio::awaitable<void> handle_messages(
+        boost::beast::tcp_stream &stream,
+        boost::beast::http::request<boost::beast::http::string_body> &req);
+
+    boost::asio::awaitable<std::optional<UserId>>
+    create_user(auth::Auth const &auth);
 
     boost::asio::awaitable<void> join(websocket::WebSocketSession *session);
 
