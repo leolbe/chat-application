@@ -38,6 +38,11 @@ private:
         boost::beast::tcp_stream &stream,
         std::string &host);
 
+    boost::asio::awaitable<bool> change_login_prompt(
+        boost::beast::flat_buffer &buf,
+        boost::beast::tcp_stream &stream,
+        std::string &host);
+
     boost::asio::awaitable<bool> signup_prompt(
         boost::beast::flat_buffer &buf,
         boost::beast::tcp_stream &stream,

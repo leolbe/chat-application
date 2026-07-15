@@ -4,6 +4,7 @@
 
 #pragma once
 #include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
 namespace chatapp::server {
 
@@ -19,5 +20,9 @@ struct User {
     // no security for now
     std::string password;
 };
+
+inline std::string user_id_to_string(UserId const &user_id) {
+    return boost::uuids::to_string(user_id);
+}
 
 }

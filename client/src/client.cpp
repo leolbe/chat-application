@@ -106,10 +106,10 @@ asio::awaitable<bool> Client::fetch_messages(
         std::println("Messages:\n{}", res.body());
         break;
     case http::status::unauthorized:
-        std::println("Failed to authorize");
+        std::println("Failed to authorize!");
         break;
     default:
-        std::cout << res.body() << "\n";
+        std::println("Network error {}: {}", res.base().result_int(), res.body());
         co_return false;
     }
     co_return true;
@@ -132,6 +132,76 @@ asio::awaitable<bool> Client::login_prompt(
         co_return true;
     }
     this->auth = auth;
+    co_return true;
+}
+
+asio::awaitable<bool> Client::change_login_prompt(
+    beast::flat_buffer &buf, beast::tcp_stream &stream, std::string &host) {
+    beast::error_code ec;
+
+    std::string username;
+    std::string password;
+    std::print("Current username: ");
+    std::getline(std::cin, username);
+    std::print("Current password: ");
+    std::getline(std::cin, password);
+
+    auto auth = auth::Auth::make(username, password);
+    if (!auth.has_value()) {
+        std::println("Invalid username or password!");
+        co_return true;
+    }
+
+    std::string new_username;
+    std::string new_password;
+    std::print("New username: ");
+    std::getline(std::cin, new_username);
+    std::print("New password: ");
+    std::getline(std::cin, new_password);
+
+    auto new_auth = auth::Auth::make(new_username, new_password);
+    if (!new_auth.has_value()) {
+        std::println("Invalid username or password!");
+        co_return true;
+    }
+
+    http::request<http::string_body> req{http::verb::post, "/change-login", 11};
+    req.set(http::field::host, host);
+    req.set(http::field::authorization, auth->encode());
+    req.body() = new_auth->encode();
+    req.prepare_payload();
+
+    co_await http::async_write(
+        stream, req, asio::redirect_error(asio::use_awaitable, ec));
+    if (ec) {
+        fail(ec, "error when sending HTTP request");
+        co_return false;
+    }
+
+    http::response<http::dynamic_body> res;
+    co_await http::async_read(
+        stream, buf, res, asio::redirect_error(asio::use_awaitable, ec));
+    if (ec) {
+        fail(ec, "error when reading HTTP response");
+        co_return false;
+    }
+
+    switch (res.base().result()) {
+    case http::status::no_content:
+        std::println("Successfully updated username/password!");
+        this->auth = new_auth;
+        break;
+    case http::status::unauthorized:
+        std::println("Failed to authorize!");
+        break;
+    case http::status::conflict:
+        std::println("Username is already taken!");
+        break;
+    default:
+        std::string body = boost::beast::buffers_to_string(res.body().data());
+        std::println("Network error {}: {}", res.base().result_int(), body);
+        co_return false;
+    }
     co_return true;
 }
 
@@ -181,7 +251,7 @@ asio::awaitable<bool> Client::signup_prompt(
         break;
     default:
         std::string body = boost::beast::buffers_to_string(res.body().data());
-        std::cout << body << "\n";
+        std::println("Network error {}: {}", res.base().result_int(), body);
         co_return false;
     }
     co_return true;
@@ -191,13 +261,17 @@ asio::awaitable<bool> Client::login(
     beast::flat_buffer &buf, beast::tcp_stream &stream, std::string &host) {
     std::println("Welcome to chatapp!");
     while (std::cin) {
-        std::println("l: login, s: signup, q: quit");
+        std::println("l: login, lc: change username/password and login\ns: signup, q: quit");
 
         std::string inp;
         std::getline(std::cin, inp);
 
         if (inp == "l") {
             if (!co_await login_prompt(buf, stream, host)) {
+                break;
+            }
+        } else if (inp == "lc") {
+            if (!co_await change_login_prompt(buf, stream, host)) {
                 break;
             }
         } else if (inp == "s") {

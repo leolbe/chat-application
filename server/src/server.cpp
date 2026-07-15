@@ -47,7 +47,6 @@ asio::awaitable<void> send_response(
 
     res.set(http::field::server, protocol::SERVER_NAME);
     res.keep_alive(keep_alive);
-    res.prepare_payload();
     if (!body.empty()) {
         res.set(http::field::content_type, "text/plain");
         res.body() = body;
@@ -139,6 +138,8 @@ asio::awaitable<void> Server::handle(beast::tcp_stream stream) {
 
         if (req.target() == "/signup") {
             co_await handle_signup(stream, req);
+        } else if (req.target() == "/change-login") {
+            co_await handle_change_login(stream, req);
         } else if (req.target() == "/messages") {
             co_await handle_messages(stream, req);
         } else {
@@ -150,6 +151,19 @@ asio::awaitable<void> Server::handle(beast::tcp_stream stream) {
             co_return;
         }
     }
+}
+
+asio::awaitable<std::optional<auth::Auth>> decode_authentication(
+    beast::tcp_stream &stream, std::string_view auth_encoded) {
+    auto auth = auth::Auth::decode(auth_encoded);
+    if (!auth.has_value()) {
+        co_await send_response(
+            stream,
+            http::status::unprocessable_entity,
+            "Invalid username or password",
+            false);
+    }
+    co_return auth;
 }
 
 asio::awaitable<std::optional<auth::Auth>> parse_authentication(
@@ -164,16 +178,7 @@ asio::awaitable<std::optional<auth::Auth>> parse_authentication(
         co_return std::optional<auth::Auth>{};
     }
     auto auth_encoded = auth_it->value();
-
-    auto auth = auth::Auth::decode(auth_encoded);
-    if (!auth.has_value()) {
-        co_await send_response(
-            stream,
-            http::status::unprocessable_entity,
-            "Invalid username or password",
-            false);
-    }
-    co_return auth;
+    co_return co_await decode_authentication(stream, auth_encoded);
 }
 
 asio::awaitable<std::optional<server::UserId>> Server::authenticate(
@@ -190,12 +195,43 @@ asio::awaitable<std::optional<server::UserId>> Server::authenticate(
         if (user.password == auth->get_password()) {
             co_return user_id;
         }
-    } catch (const std::exception &e) {
+    } catch (std::exception const &e) {
         fail(e, "exception when authenticating user");
     }
     co_await send_response(
         stream, http::status::unauthorized, "Failed to authenticate", false);
     co_return std::optional<UserId>{};
+}
+
+asio::awaitable<void> Server::handle_change_login(
+    beast::tcp_stream &stream, http::request<http::string_body> &req) {
+    if (req.method() != http::verb::post) {
+        co_await send_response(
+            stream,
+            http::status::bad_request,
+            "Unknown method for /change-login",
+            false);
+        co_return;
+    }
+
+    auto user_id = co_await authenticate(stream, req);
+    if (!user_id.has_value()) {
+        co_return;
+    }
+
+    auto new_auth = co_await decode_authentication(stream, req.body());
+    if (!new_auth.has_value()) {
+        co_return;
+    }
+
+    auto success = co_await update_user(user_id.value(), new_auth.value());
+
+    if (success) {
+        co_await send_response(stream, http::status::no_content, "", true);
+    } else {
+        co_await send_response(
+            stream, http::status::conflict, "Username is already taken", false);
+    }
 }
 
 asio::awaitable<void> Server::handle_signup(
@@ -283,6 +319,43 @@ Server::create_user(auth::Auth const &auth) {
     std::println("Create user '{}'", auth.get_username());
 
     co_return user_id;
+}
+
+asio::awaitable<bool>
+Server::update_user(UserId const &user_id, auth::Auth const &new_auth) {
+    co_await asio::dispatch(strand, asio::use_awaitable);
+    try {
+        // new username is used by this user
+        auto &occupied_by_user_id = users_lookup.at(new_auth.get_username());
+        if (user_id != occupied_by_user_id) {
+            // new username is used by another user
+            co_return false;
+        }
+    } catch (std::exception const&) {
+        // new username is unoccupied, proceed
+    }
+    try {
+        auto &user = users.at(user_id);
+
+        if (user.username != new_auth.get_username()) {
+            users_lookup.erase(user.username);
+            users_lookup.emplace(new_auth.get_username(), user_id);
+
+            user.username = new_auth.get_username();
+        }
+
+        user.password = new_auth.get_password();
+    } catch (std::exception const &e) {
+        fail(e, "exception when updating user");
+    }
+
+    // log
+    std::println(
+        "Update user '{}' (id '{}')",
+        new_auth.get_username(),
+        user_id_to_string(user_id));
+
+    co_return true;
 }
 
 asio::awaitable<void> Server::join(websocket::WebSocketSession *session) {

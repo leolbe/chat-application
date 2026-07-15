@@ -49,6 +49,10 @@ private:
         boost::beast::tcp_stream &stream,
         boost::beast::http::request<boost::beast::http::string_body> &req);
 
+    boost::asio::awaitable<void> handle_change_login(
+        boost::beast::tcp_stream &stream,
+        boost::beast::http::request<boost::beast::http::string_body> &req);
+
     boost::asio::awaitable<void> handle_signup(
         boost::beast::tcp_stream &stream,
         boost::beast::http::request<boost::beast::http::string_body> &req);
@@ -59,6 +63,9 @@ private:
 
     boost::asio::awaitable<std::optional<UserId>>
     create_user(auth::Auth const &auth);
+
+    boost::asio::awaitable<bool>
+    update_user(UserId const &auth, auth::Auth const &new_auth);
 
     boost::asio::awaitable<void> join(websocket::WebSocketSession *session);
 
